@@ -1,81 +1,66 @@
 import React, { useEffect, useState } from "react";
 import { auth, db } from "../firebase/config";
-import { getDoc, doc, collection, query, where, onSnapshot, updateDoc } from "firebase/firestore";
 import { signOut } from "firebase/auth";
 
+import {
+  getDoc,
+  doc,
+  collection,
+  query,
+  onSnapshot,
+  updateDoc,
+} from "firebase/firestore";
+import { useNavigate } from "react-router-dom";
+
 export default function Dashboard({ user }) {
-  const [orders, setOrders] = useState([]);
+  const [requests, setRequests] = useState([]);
   const [status, setStatus] = useState("Unavailable");
+  const navigate = useNavigate();
 
-  // Fetch shopkeeper status
   useEffect(() => {
-    const fetchShopStatus = async () => {
-      const shopRef = doc(db, "shopkeepers", user.uid);
-      const docSnap = await getDoc(shopRef);
-      if (docSnap.exists()) {
-        setStatus(docSnap.data().status || "Unavailable");
+    async function fetchStatus() {
+      const snap = await getDoc(doc(db, "shopkeepers", user.uid));
+      if (snap.exists()) {
+        setStatus(snap.data().status || "Unavailable");
       }
-    };
-
-    fetchShopStatus();
+    }
+    fetchStatus();
   }, [user.uid]);
 
-  // Fetch orders for this shopkeeper
   useEffect(() => {
-    const q = query(collection(db, "orders"), where("shopId", "==", user.uid));
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const orderList = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
-      setOrders(orderList);
+    const ref = collection(db, "shopkeepers", user.uid, "print_requests");
+    const unsub = onSnapshot(query(ref), snapshot => {
+      const arr = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      setRequests(arr);
     });
-
-    return () => unsubscribe();
+    return () => unsub();
   }, [user.uid]);
 
-  // Toggle availability status
   const toggleStatus = async () => {
     const newStatus = status === "Available" ? "Unavailable" : "Available";
-    await updateDoc(doc(db, "shopkeepers", user.uid), {
-      status: newStatus,
-    });
+    await updateDoc(doc(db, "shopkeepers", user.uid), { status: newStatus });
     setStatus(newStatus);
   };
 
-  // Update order status
-  const updateOrderStatus = async (orderId, newStatus) => {
-    try {
-      const orderRef = doc(db, "orders", orderId);
-      await updateDoc(orderRef, {
-        status: newStatus,
-      });
-    } catch (err) {
-      console.error("Failed to update status:", err);
-    }
+  const intOrZero = v => {
+    const x = parseInt(v);
+    return isNaN(x) ? 0 : x;
   };
 
   return (
     <div className="p-6">
       <div className="flex justify-between items-center mb-4">
-        <h2 className="text-2xl font-bold">📋 Print Orders</h2>
-        <button
-          onClick={() => signOut(auth)}
-          className="bg-red-500 text-white px-4 py-2 rounded"
-        >
+        <h2 className="text-2xl font-bold">📋 Print Requests</h2>
+        <button onClick={() => { signOut(auth); }} className="bg-red-500 text-white px-4 py-2 rounded">
           Logout
         </button>
       </div>
 
-      {/* ✅ Availability Toggle Section */}
       <div className="mb-6 p-4 bg-white rounded-lg shadow border border-gray-200">
         <h3 className="text-lg font-semibold mb-2">🔌 Service Availability</h3>
         <button
           onClick={toggleStatus}
-          className={`px-4 py-2 rounded text-white ${
-            status === "Available" ? "bg-green-600" : "bg-red-600"
-          }`}
+          className={`px-4 py-2 rounded text-white ${status === "Available" ? "bg-green-600" : "bg-red-600"}`}
         >
           {status === "Available" ? "Turn OFF Service" : "Turn ON Service"}
         </button>
@@ -84,63 +69,36 @@ export default function Dashboard({ user }) {
         </p>
       </div>
 
-      {/* ✅ Orders Section */}
-      {orders.length === 0 ? (
-        <p>No orders yet.</p>
+      {requests.length === 0 ? (
+        <p>No print requests yet.</p>
       ) : (
-        <div className="grid gap-4">
-          {orders.map((order) => (
-            <div
-              key={order.id}
-              className="bg-white rounded-xl shadow p-4 border border-gray-200"
-            >
-              <div className="mb-2">
-                <strong>Student:</strong> {order.studentName || "Unknown"}
-              </div>
-              <div className="mb-2">
-                <strong>Status:</strong>{" "}
-                <span className="text-blue-600 font-semibold">
-                  {order.status}
-                </span>
-              </div>
-              <div className="mb-2">
-                <strong>Pickup Code:</strong>{" "}
-                <code>{order.pickupCode || "N/A"}</code>
-              </div>
-              <div className="mb-4">
-                <strong>File:</strong>{" "}
-                <a
-                  href={order.fileUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-blue-500 underline"
-                >
-                  View / Download
-                </a>
-              </div>
-              <div className="flex gap-2">
-                <button
-                  className="bg-yellow-400 text-white px-3 py-1 rounded"
-                  onClick={() => updateOrderStatus(order.id, "In Queue")}
-                >
-                  In Queue
-                </button>
-                <button
-                  className="bg-blue-500 text-white px-3 py-1 rounded"
-                  onClick={() => updateOrderStatus(order.id, "Printing")}
-                >
-                  Printing
-                </button>
-                <button
-                  className="bg-green-600 text-white px-3 py-1 rounded"
-                  onClick={() => updateOrderStatus(order.id, "Ready")}
-                >
-                  Ready
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
+        <table className="w-full text-left border-collapse mb-6">
+          <thead>
+            <tr className="border-b">
+              <th className="py-2 px-3">Request ID</th>
+              <th className="py-2 px-3">Student</th>
+              <th className="py-2 px-3">Price (₹)</th>
+              <th className="py-2 px-3">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {requests.map(req => (
+              <tr key={req.id} className="border-b hover:bg-gray-50">
+                <td className="py-2 px-3"><code>{req.id}</code></td>
+                <td className="py-2 px-3">{req.studentName || "Unknown"}</td>
+                <td className="py-2 px-3">{intOrZero(req.price)}</td>
+                <td className="py-2 px-3">
+                  <button
+                    onClick={() => navigate(`/request/${req.id}`, { state: { request: req } })}
+                    className="bg-blue-500 text-white px-3 py-1 rounded"
+                  >
+                    View
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       )}
     </div>
   );

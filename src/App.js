@@ -8,6 +8,7 @@ import LoginPage from "./pages/LoginPage";
 import SignInPage from "./pages/SignInPage";
 import Dashboard from "./pages/Dashboard";
 import SetRatesPage from "./pages/SetRatesPage";
+import RequestData from "./pages/RequestDetails"; // <-- ✅ NEW
 
 function App() {
   const [user, setUser] = useState(null);
@@ -60,6 +61,10 @@ function App() {
         <Route
           path="/set-rates"
           element={user ? <SetRatesPage user={user} /> : <Navigate to="/" />}
+        />
+        <Route
+          path="/request/:id"
+          element={user ? <RequestData /> : <Navigate to="/" />} // ✅ NEW
         />
       </Routes>
     </Router>
