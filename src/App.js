@@ -1,71 +1,85 @@
-import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
+// src/App.js
+import { BrowserRouter as Router, Routes, Route, Navigate, Outlet, useOutletContext } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
-import { auth, db } from "./firebase/config";
-import { doc, getDoc } from "firebase/firestore";
+import { auth } from "./firebase/config";
 
+// Pages
 import LoginPage from "./pages/LoginPage";
 import SignInPage from "./pages/SignInPage";
-import Dashboard from "./pages/Dashboard";
+import Dashboard from "./pages/Dashboard"; 
 import SetRatesPage from "./pages/SetRatesPage";
-import RequestData from "./pages/RequestDetails"; // <-- ✅ NEW
+import SetMaterialPage from "./pages/SetMaterialPage";
+import NewRequests from "./pages/NewRequests";
+import RequestDetails from "./pages/RequestDetails";
+import PaymentCollectionPage from "./pages/PaymentCollectionPage";
+
+// Wrapper to safely provide shopId to NewRequests
+function NewRequestsWrapper() {
+  const { shopId } = useOutletContext();
+  if (!shopId) return <p className="p-10 text-xl font-semibold text-blue-600">🔄 Loading shop data...</p>;
+  return <NewRequests shopId={shopId} />;
+}
 
 function App() {
   const [user, setUser] = useState(null);
-  const [hasSetRates, setHasSetRates] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
-      setUser(firebaseUser);
-
-      if (firebaseUser) {
-        const ref = doc(db, "shopkeepers", firebaseUser.uid);
-        const snap = await getDoc(ref);
-        if (snap.exists() && snap.data().hasSetRates) {
-          setHasSetRates(true);
-        } else {
-          setHasSetRates(false);
-        }
-      }
-
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
       setLoading(false);
     });
-
-    return () => unsub();
+    return () => unsubscribe();
   }, []);
 
-  if (loading) return <p className="p-10">🔄 Loading...</p>;
+  if (loading) {
+    return <p className="p-10 text-xl font-semibold text-blue-600">🔄 Loading authentication status...</p>;
+  }
+
+  // Protected route component
+  const ProtectedRoute = ({ children }) => {
+    return user ? children : <Navigate to="/" replace />;
+  };
 
   return (
     <Router>
       <Routes>
+        {/* Root path */}
         <Route
           path="/"
-          element={
-            user ? (
-              hasSetRates ? <Navigate to="/dashboard" /> : <Navigate to="/set-rates" />
-            ) : (
-              <SignInPage />
-            )
-          }
+          element={user ? <Navigate to="/dashboard" replace /> : <SignInPage />}
         />
-        <Route
-          path="/register"
-          element={user ? <Navigate to="/dashboard" /> : <LoginPage />}
-        />
+
+        {/* Registration */}
+        <Route path="/register" element={<LoginPage />} />
+
+        {/* Dashboard with nested routes */}
         <Route
           path="/dashboard"
-          element={user ? <Dashboard user={user} /> : <Navigate to="/" />}
-        />
-        <Route
-          path="/set-rates"
-          element={user ? <SetRatesPage user={user} /> : <Navigate to="/" />}
-        />
-        <Route
-          path="/request/:id"
-          element={user ? <RequestData /> : <Navigate to="/" />} // ✅ NEW
-        />
+          element={
+            <ProtectedRoute>
+              <Dashboard />
+            </ProtectedRoute>
+          }
+        >
+          {/* Nested routes */}
+          <Route index element={<Navigate to="new-requests" replace />} />
+
+          {/* New Requests */}
+          <Route path="new-requests" element={<NewRequestsWrapper />} />
+
+          {/* Request Details */}
+          <Route path="request/:shopId/:reqId" element={<RequestDetails />} />
+
+          {/* Other Dashboard pages */}
+          <Route path="set-material" element={<SetMaterialPage />} />
+          <Route path="set-rates" element={<SetRatesPage />} />
+          <Route path="payment" element={<PaymentCollectionPage />} />
+        </Route>
+
+        {/* Catch-all */}
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Router>
   );
